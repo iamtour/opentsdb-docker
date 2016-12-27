@@ -1,54 +1,47 @@
-FROM janeczku/alpine-kubernetes:3.2
+# use the centos base image
+FROM centos:7
+MAINTAINER Tour He, hetaohai@theinitium.com
 
-RUN apk --update add \
-    rsyslog \
-    bash \
-    openjdk7 \
-    make \
-    wget \
-  && : adding gnuplot for graphing \
-  && apk add gnuplot \
-    --update-cache \
-    --repository http://dl-3.alpinelinux.org/alpine/edge/testing/
+ENV JAVA_VERSION 8u111
+ENV BUILD_VERSION b14
 
-ENV TSDB_VERSION 2.2.0
+# Upgrading system
+RUN yum -y upgrade
+RUN yum -y install wget
+
+# Downloading Java
+RUN wget --no-cookies --no-check-certificate --header "Cookie: oraclelicense=accept-securebackup-cookie" "http://download.oracle.com/otn-pub/java/jdk/$JAVA_VERSION-$BUILD_VERSION/jdk-$JAVA_VERSION-linux-x64.rpm" -O /tmp/jdk-8-linux-x64.rpm
+
+RUN yum -y install /tmp/jdk-8-linux-x64.rpm
+
+RUN alternatives --install /usr/bin/java jar /usr/java/latest/bin/java 200000
+RUN alternatives --install /usr/bin/javaws javaws /usr/java/latest/bin/javaws 200000
+RUN alternatives --install /usr/bin/javac javac /usr/java/latest/bin/javac 200000
+
+ENV JAVA_HOME /usr/java/latest
+
+
+#ENV TSDB_VERSION 2.2.1
+#ENV TSDB_VERSION_RPM 2.2.1
+ENV TSDB_VERSION 2.3.0RC2
+ENV TSDB_VERSION_RPM 2.3.0_RC2
 ENV HBASE_VERSION 1.1.3
-ENV JAVA_HOME /usr/lib/jvm/java-1.7-openjdk
-ENV PATH $PATH:/usr/lib/jvm/java-1.7-openjdk/bin/
+ENV PATH $PATH:/usr/java/latest/bin/
 
 RUN mkdir -p /opt/bin/
 
-RUN mkdir /opt/opentsdb/
+RUN mkdir -p /opt/opentsdb
 WORKDIR /opt/opentsdb/
-RUN apk --update add --virtual builddeps \
-    build-base \
-    autoconf \
-    automake \
-    git \
-    python \
-  && : Install OpenTSDB and scripts \
-  && wget --no-check-certificate \
-    -O v${TSDB_VERSION}.zip \
-    https://github.com/OpenTSDB/opentsdb/archive/v${TSDB_VERSION}.zip \
-  && unzip v${TSDB_VERSION}.zip \
-  && rm v${TSDB_VERSION}.zip \
-  && cd /opt/opentsdb/opentsdb-${TSDB_VERSION} \
-  && ./build.sh \
-  && : because of issue https://github.com/OpenTSDB/opentsdb/issues/707 \
-  && : commented lines do not work. These can be uncommeted when version of \
-  && : tsdb is bumped. Entrypoint will have to be updated too. \
-  && : cd build \
-  && : make install \
-  && : cd / \
-  && : rm -rf /opt/opentsdb/opentsdb-${TSDB_VERSION} \
-  && apk del builddeps \
-  && rm -rf /var/cache/apk/*
+#RUN wget https://github.com/OpenTSDB/opentsdb/releases/download/v${TSDB_VERSION}/opentsdb-${TSDB_VERSION}.rpm \
+RUN wget https://github.com/OpenTSDB/opentsdb/releases/download/v${TSDB_VERSION}/opentsdb-${TSDB_VERSION_RPM}.rpm \
+  && yum localinstall opentsdb-${TSDB_VERSION_RPM}.rpm -y \
+  && rm opentsdb-${TSDB_VERSION_RPM}.rpm
 
 #Install HBase and scripts
 RUN mkdir -p /data/hbase /root/.profile.d /opt/downloads
 
 WORKDIR /opt/downloads
-RUN wget -O hbase-${HBASE_VERSION}.bin.tar.gz http://archive.apache.org/dist/hbase/1.1.3/hbase-1.1.3-bin.tar.gz && \
+RUN wget -O hbase-${HBASE_VERSION}.bin.tar.gz http://archive.apache.org/dist/hbase/${HBASE_VERSION}/hbase-${HBASE_VERSION}-bin.tar.gz && \
     tar xzvf hbase-${HBASE_VERSION}.bin.tar.gz && \
     mv hbase-${HBASE_VERSION} /opt/hbase && \
     rm hbase-${HBASE_VERSION}.bin.tar.gz
@@ -57,6 +50,7 @@ ADD docker/hbase-site.xml /opt/hbase/conf/
 ADD docker/start_opentsdb.sh /opt/bin/
 ADD docker/create_tsdb_tables.sh /opt/bin/
 ADD docker/start_hbase.sh /opt/bin/
+ADD docker/start_all.sh /opt/bin/
 
 RUN for i in /opt/bin/start_hbase.sh /opt/bin/start_opentsdb.sh /opt/bin/create_tsdb_tables.sh; \
     do \
@@ -67,6 +61,9 @@ RUN for i in /opt/bin/start_hbase.sh /opt/bin/start_opentsdb.sh /opt/bin/create_
 RUN mkdir -p /etc/services.d/hbase /etc/services.d/tsdb
 RUN ln -s /opt/bin/start_hbase.sh /etc/services.d/hbase/run
 RUN ln -s /opt/bin/start_opentsdb.sh /etc/services.d/tsdb/run
+
+RUN chmod +x /opt/bin/start_all.sh 
+RUN ln -s /opt/bin/start_all.sh /etc/profile.d/start_all.sh
 
 EXPOSE 60000 60010 60030 4242 16010
 
