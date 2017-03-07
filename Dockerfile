@@ -65,6 +65,10 @@ RUN ln -s /opt/bin/start_opentsdb.sh /etc/services.d/tsdb/run
 RUN chmod +x /opt/bin/start_all.sh 
 RUN ln -s /opt/bin/start_all.sh /etc/profile.d/start_all.sh
 
+#set timezone
+RUN rm /etc/localtime -rf
+RUN ln -s /usr/share/zoneinfo/Hongkong /etc/localtime
+
 #TSDB configure
 RUN echo tsd.storage.fix_duplicates=true >> /usr/share/opentsdb/etc/opentsdb/opentsdb.conf
 
